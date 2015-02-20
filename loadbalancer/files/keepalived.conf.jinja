@@ -1,0 +1,19 @@
+{% from "loadbalancer/map.jinja" import loadbalancer with context -%}
+vrrp_script chk_haproxy {
+   script "killall -0 haproxy"   # verify the pid existance
+   interval 2                    # check every 2 seconds
+   weight 2                      # add 2 points of prio if OK
+}
+ 
+vrrp_instance VI_1 {
+   interface {{ loadbalancer.keepalived.interface }}                # interface to monitor
+   state {{ loadbalancer.keepalived.state }}
+   virtual_router_id {% for key, value in loadbalancer.vip.iteritems() if key == grains['id'].split('-')[0].split('.')[0] %}{{ value.split('.')[3] }}{% endfor %}          # Assign one ID for this route
+   priority 10{% if grains.id.split('-')[1] is defined %}{{ grains.id.split('-')[1].split('.')[0] }}{% endif %}                  # 101 on master, 100 on backup
+   virtual_ipaddress {
+       {% for key, value in loadbalancer.vip.iteritems() if key == grains['id'].split('-')[0].split('.')[0] %}{{ value }}{% endfor %}            # the virtual IP
+   }
+   track_script {
+       chk_haproxy
+   }
+}

@@ -1,0 +1,64 @@
+{% from "loadbalancer/map.jinja" import loadbalancer with context -%}
+global
+    maxconn                     {{ loadbalancer.global.maxconn }}
+    chroot                      /var/lib/haproxy
+    pidfile                     /var/run/haproxy.pid
+    user                        haproxy
+    group                       haproxy
+    tune.ssl.default-dh-param   2048
+    daemon
+    stats socket                /var/lib/haproxy/stats mode 777
+
+defaults
+    mode    http
+    balance leastconn
+    option forwardfor
+    option http-server-close
+    retries 3
+    option redispatch
+    timeout connect  50000
+    timeout client  100000
+    timeout server  100000
+
+{% for host, listeners in loadbalancer.frontends.iteritems() if host == grains['id'].split('-')[0].split('.')[0] %}
+{% for listener, values in listeners.iteritems() %}
+listen {{ listener }}-frontend
+    bind {% for key, value in loadbalancer.vip.iteritems() if key == grains['id'].split('-')[0].split('.')[0] %}{{ value }}{% endfor %}:{{ values['port'] }}
+{% if values['ssl'] == 'True' %}
+    bind {% for key, value in loadbalancer.vip.iteritems() if key == grains['id'].split('-')[0].split('.')[0] %}{{ value }}{% endfor %}:443 ssl crt /etc/haproxy/cert.pem    
+{% endif %}
+{% if values['mode'] is defined %}
+    mode {{ values['mode'] }}
+{% endif %}
+{% if values['acl'] is defined %}
+{% for rule in values['acl'] %}
+    acl {{ rule }}
+{% endfor %}
+{% for rule in values['acl'] %}
+    use_backend {{ rule.split(' ')[0].split('_')[1] }}-backend if {{ rule.split(' ')[0] }}
+{% endfor %}
+{% else %}
+    default_backend {{ listener }}-backend
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+
+
+
+
+{% for host, backends in loadbalancer.backends.iteritems() if host == grains['id'].split('-')[0].split('.')[0] %}
+{% for backend, values in backends.iteritems() %}
+backend {{ backend }}-backend
+{% if values['mode'] is defined %}
+    mode {{ values['mode'] }}
+{% endif %}
+{% if values['ssl'] == 'force' %}
+    redirect scheme https if !{ ssl_fc }
+{% endif %}
+{%- set addrs = salt['mine.get']('*', 'network.ip_addrs') %}
+{%- for name, addrlist in addrs.items() if grains['id'].split('-')[0].split('.')[0] in name %}
+    server {{ name.split('.')[0] }} {{ name }}:{{ values['port'] }} check
+{% endfor %}
+{% endfor %}
+{% endfor %}

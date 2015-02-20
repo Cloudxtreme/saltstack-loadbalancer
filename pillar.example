@@ -1,0 +1,57 @@
+loadbalancer:
+  global:
+    maxconn: '4000'
+  defaults:
+    mode: 'http'
+    retries: '3'
+    balance: 'leastconn'
+    t_connect: '5000'
+    t_client: '10000'
+    t_server: '100000'
+  keepalived:
+    interface: 'eth0'
+    state: 'MASTER'
+    virtual_router_id: '51'
+  vip:
+    api: '192.168.0.250'
+    db: '192.168.0.251'
+  dns:
+    api: ['api.example.com']
+    db: ['db.example.com']
+  frontends:
+    api:
+      serviceA:
+        mode: 'http'
+        port: '80'
+        ssl: 'True'
+        acl:
+          - 'is_example hdr_end(host) -i example.com'
+          - 'is_domain hdr_end(host) -i domain.com'
+    db:
+      serviceB:
+        mode: 'http'
+        port: '80'
+        ssl: 'False'
+      redis:
+        mode: 'tcp'
+        port: '6379'
+        ssl: 'False'
+  backends:
+    api:
+      serviceA:
+        ssl: 'force'
+        port: '80'
+    admin:
+      serviceB:
+        ssl: 'ignore'
+        port: '8080'
+      redis:
+        mode: tcp
+        ssl: 'ignore'
+        port: '6370'
+  sslcert: |
+    -----BEGIN CERTIFICATE-----
+    -----END CERTIFICATE-----
+  sslkey: |
+    -----BEGIN PRIVATE KEY-----
+    -----END PRIVATE KEY-----
